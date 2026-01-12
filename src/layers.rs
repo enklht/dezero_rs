@@ -134,7 +134,7 @@ impl Layer for Linear {
         if self.w.is_none() {
             self.init_w(x.get_shape()[1]);
         }
-        F::linear(&x, self.w.as_ref().unwrap(), self.b.as_ref())
+        F::linear(x, self.w.as_ref().unwrap(), self.b.as_ref())
     }
     fn clear_grads(&mut self) {
         self.w.as_ref().unwrap().clear_grad();

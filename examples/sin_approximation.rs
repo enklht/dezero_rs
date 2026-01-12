@@ -3,7 +3,7 @@ use std::f32::consts::PI;
 use dezero::functions as F;
 use dezero::layers::{Model, MLP};
 use dezero::optimizers::{Momentum, Optimizer};
-use dezero::{array1, var, Array};
+use dezero::{array::Array, array1, var};
 
 fn main() {
     let x = (array1!(0..100) / 100.).reshape(&[100, 1]);
@@ -18,8 +18,8 @@ fn main() {
     let iters = 10000;
 
     for i in 0..iters {
-        let y_pred = &model.call(x);
-        let loss = &F::mean_squared_error(y, y_pred);
+        let y_pred = model.call(x);
+        let loss = F::mean_squared_error(y, &y_pred);
 
         model.clear_grads();
         loss.backward();

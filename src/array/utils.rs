@@ -23,8 +23,7 @@ macro_rules! inner {
 pub(super) fn shape_after_broadcast(shape0: &[usize], shape1: &[usize]) -> Option<Vec<usize>> {
     let mut res = Vec::new();
     if shape0.len() <= shape1.len() {
-        for (&n, &m) in std::iter::repeat(&1)
-            .take(shape1.len() - shape0.len())
+        for (&n, &m) in std::iter::repeat_n(&1, shape1.len() - shape0.len())
             .chain(shape0.iter())
             .zip(shape1.iter())
         {
@@ -36,8 +35,7 @@ pub(super) fn shape_after_broadcast(shape0: &[usize], shape1: &[usize]) -> Optio
             }
         }
     } else {
-        for (&n, &m) in std::iter::repeat(&1)
-            .take(shape0.len() - shape1.len())
+        for (&n, &m) in std::iter::repeat_n(&1, shape0.len() - shape1.len())
             .chain(shape1.iter())
             .zip(shape0.iter())
         {
@@ -77,8 +75,7 @@ pub(super) fn broadcast_to(data: &[f32], old_shape: &[usize], new_shape: &[usize
     for (&axis, &dup) in axes.iter().zip(dups.iter()) {
         data = data
             .chunks(chunk_sizes[dim - axis - 1])
-            .map(|c| c.repeat(dup))
-            .flatten()
+            .flat_map(|c| c.repeat(dup))
             .collect();
     }
     data

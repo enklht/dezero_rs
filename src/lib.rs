@@ -1,7 +1,7 @@
 pub mod array;
 pub mod functions;
 pub mod layers;
-mod macros;
+pub mod macros;
 pub mod optimizers;
 pub mod variable;
 

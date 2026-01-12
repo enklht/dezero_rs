@@ -1,11 +1,10 @@
 use dezero::{
     array::Array,
-    layers::Model,
-    layers::MLP,
+    functions as F,
+    layers::{Model, MLP},
     optimizers::{Momentum, Optimizer},
     variable::VBox,
 };
-use dezero::{eval, functions as F};
 
 fn main() {
     let (vec_x, vec_t) = load_mnist("mnist_test.csv");
@@ -19,10 +18,10 @@ fn main() {
     for i in 0..epochs {
         let mut loss_tot = 0.;
         for (x, t) in vec_x.iter().zip(vec_t.iter()) {
-            let x = &VBox::new(x.clone());
-            let t = &VBox::new(t.clone());
-            let y = &F::softmax(&model.call(x), 1);
-            let loss = &F::cross_entropy_loss(y, t);
+            let x = VBox::new(x.clone());
+            let t = VBox::new(t.clone());
+            let y = F::softmax(&model.call(&x), 1);
+            let loss = F::cross_entropy_loss(&y, &t);
 
             loss_tot += loss.get_array().get_data()[0];
 
@@ -35,9 +34,9 @@ fn main() {
         println!("loss: {loss_tot}");
     }
 
-    eval!();
-    let x = &VBox::new(vec_x[0].clone());
-    let y = &F::softmax(&model.call(x), 1);
+    dezero::eval!();
+    let x = VBox::new(vec_x[0].clone());
+    let y = F::softmax(&model.call(&x), 1);
     y.get_array().write_csv("mnist_res_test.csv");
 }
 

@@ -10,7 +10,7 @@ macro_rules! square {
 }
 
 #[test]
-fn square_backward_test() {
+fn square_backward() {
     let x = scaler!(3.);
     let y = square!(x);
     y.backward();
@@ -18,7 +18,7 @@ fn square_backward_test() {
 }
 
 #[test]
-fn add_test() {
+fn add() {
     let x0 = scaler!(2.);
     let x1 = scaler!(3.);
     let y = x0 + x1;
@@ -26,7 +26,7 @@ fn add_test() {
 }
 
 #[test]
-fn square_add_test() {
+fn square_add() {
     let x = scaler!(2.);
     let y = scaler!(3.);
     let z = square!(x) + square!(y);
@@ -37,7 +37,7 @@ fn square_add_test() {
 }
 
 #[test]
-fn add_backward_test() {
+fn add_backward() {
     let x = scaler!(3.);
     let y = x + x;
     y.backward();
@@ -45,7 +45,7 @@ fn add_backward_test() {
 }
 
 #[test]
-fn clear_grad_test() {
+fn clear_grad() {
     let x = scaler!(3.);
     let y = x + x;
     y.backward();
@@ -58,7 +58,7 @@ fn clear_grad_test() {
 }
 
 #[test]
-fn complex_graph_test() {
+fn complex_graph() {
     let x = scaler!(2.);
     let a = square!(x);
     let y = square!(a) + square!(a);
@@ -69,7 +69,7 @@ fn complex_graph_test() {
 }
 
 #[test]
-fn grad_drop_test() {
+fn grad_drop() {
     let x0 = scaler!(1.);
     let x1 = scaler!(1.);
 
@@ -85,7 +85,7 @@ fn grad_drop_test() {
 }
 
 #[test]
-fn overload_test() {
+fn overload() {
     let a = scaler!(3.);
     let b = scaler!(2.);
     let c = scaler!(1.);
@@ -99,7 +99,7 @@ fn overload_test() {
 }
 
 #[test]
-fn sphere_test() {
+fn sphere() {
     let x = scaler!(1.);
     let y = scaler!(1.);
     let z = x.powi(2) + y.powi(2);
@@ -111,7 +111,7 @@ fn sphere_test() {
 }
 
 #[test]
-fn matyas_test() {
+fn matyas() {
     let matyas = |x: &VBox, y: &VBox| 0.26 * (x.powi(2) + y.powi(2)) - 0.48 * x * y;
 
     let x = &scaler!(1.);
@@ -124,7 +124,7 @@ fn matyas_test() {
 }
 
 #[test]
-fn goldstein_prince_test() {
+fn goldstein_prince() {
     let gp = |x: &VBox, y: &VBox| {
         (1 + (x + y + 1).powi(2)
             * (19 - 14 * x + 3 * x.powi(2) - 14 * y + 6 * x * y + 3 * y.powi(2)))
@@ -143,7 +143,7 @@ fn goldstein_prince_test() {
 }
 
 #[test]
-fn rosenbrock_opt_test() {
+fn rosenbrock_opt() {
     let rosenbrock = |x0: &VBox, x1: &VBox| 100 * (x1 - x0.powi(2)).powi(2) + (x0 - 1).powi(2);
 
     let x0 = scaler!(0);
@@ -172,7 +172,7 @@ fn rosenbrock_opt_test() {
 }
 
 #[test]
-fn reshape_test() {
+fn reshape() {
     let x = var!(array_with_shape!(0..6, [2, 3]));
     let y = x.reshape(vec![6]);
     y.backward();
@@ -181,7 +181,7 @@ fn reshape_test() {
 }
 
 #[test]
-fn transpose_test() {
+fn transpose() {
     let x = var!(array2!([[1, 2, 3], [4, 5, 6]]));
     let y = x.transpose();
     y.backward();
@@ -190,7 +190,7 @@ fn transpose_test() {
 }
 
 #[test]
-fn linear_test() {
+fn linear() {
     let x = var!(array1!(0..12).reshape(&[3, 4]));
     let y = var!(array1!(0..16).reshape(&[4, 4]));
     let b = var!(array1!(0..4));
@@ -210,7 +210,7 @@ fn linear_test() {
 }
 
 #[test]
-fn mse_test() {
+fn mse() {
     let x = var!(array1!(0..5));
     let y = var!(array1!(5..10));
 
@@ -223,7 +223,7 @@ fn mse_test() {
 }
 
 #[test]
-fn sigmoid_test() {
+fn sigmoid() {
     let x = scaler!(0.5);
     let x = &x.broadcast_to(&[10, 1]);
     println!("{}", x);
@@ -233,13 +233,13 @@ fn sigmoid_test() {
 }
 
 #[test]
-fn broadcast_test() {
+fn broadcast() {
     let x = array1!(0..2);
     assert_eq!(x.broadcast_to(&[2, 2]), array2!([[0, 1], [0, 1]]));
 }
 
 #[test]
-fn backward_test() {
+fn backward() {
     let x = &VBox::new(array1!(0..10));
     let y = &F::softmax(x, 0);
 
