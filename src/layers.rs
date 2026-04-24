@@ -123,7 +123,7 @@ impl Linear {
         let w = VBox::new(Array::randn(
             &[in_size, self.out_size],
             0.,
-            (in_size as f32).recip(),
+            (2.0 / in_size as f32).sqrt(),
         ));
         self.w = Some(w);
     }
