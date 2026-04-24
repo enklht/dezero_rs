@@ -7,7 +7,7 @@ use dezero::{
 };
 
 fn main() {
-    let (vec_x, vec_t) = load_mnist("mnist_test.csv");
+    let (vec_x, vec_t) = load_mnist("data/mnist_test.csv");
 
     let model = Model::new(MLP::new(&[100, 10], Box::new(F::relu)));
 
@@ -37,7 +37,7 @@ fn main() {
     dezero::eval!();
     let x = VBox::new(vec_x[0].clone());
     let y = F::softmax(&model.call(&x), 1);
-    y.get_array().write_csv("mnist_res_test.csv");
+    y.get_array().write_csv("data/mnist_res_test.csv");
 }
 
 fn load_mnist(path: &str) -> (Vec<Array>, Vec<Array>) {

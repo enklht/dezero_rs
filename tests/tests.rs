@@ -150,25 +150,21 @@ fn rosenbrock_opt() {
     let x1 = scaler!(2);
 
     let lr = 0.001;
-    let max_iter = 100;
+    let max_iter = 20000;
 
     for _ in 0..max_iter {
-        println!("{}, {}", x0, x1);
-
         let y = rosenbrock(x0, x1);
-
-        println!("{}", y);
 
         x0.clear_grad();
         x1.clear_grad();
         y.backward();
 
         x0.set_array(x0.get_array() - lr * x0.get_grad());
-        x1.set_array(x0.get_array() - lr * x0.get_grad());
+        x1.set_array(x1.get_array() - lr * x1.get_grad());
     }
 
-    assert!(x0.get_grad().all_close(&array0!(1), 1e-8));
-    assert!(x1.get_grad().all_close(&array0!(1), 1e-8));
+    assert!(x0.get_array().all_close(&array0!(1), 1e-3));
+    assert!(x1.get_array().all_close(&array0!(1), 1e-3));
 }
 
 #[test]
@@ -255,4 +251,41 @@ fn backward() {
     println!("{}", (d_loss.get_array() - loss.get_array()) / delta);
 
     // panic!()
+}
+
+#[test]
+fn all_close_handles_negative_diff() {
+    let x = array1!([1.0, 2.0]);
+    let y = array1!([1.05, 2.05]);
+
+    assert!(!x.all_close(&y, 0.01));
+    assert!(x.all_close(&y, 0.1));
+}
+
+#[test]
+fn broadcasted_matmul_backward_shapes() {
+    let x = var!(array_with_shape!(0..8, [2, 1, 2, 2]));
+    let w = var!(array_with_shape!(0..12, [1, 3, 2, 2]));
+
+    let y = x.matmul(w);
+    let loss = y.sum();
+    loss.backward();
+
+    assert_eq!(x.get_grad().get_shape(), &[2, 1, 2, 2]);
+    assert_eq!(w.get_grad().get_shape(), &[1, 3, 2, 2]);
+}
+
+#[test]
+fn broadcasted_linear_backward_shapes() {
+    let x = var!(array_with_shape!(0..6, [2, 1, 3]));
+    let w = var!(array_with_shape!(0..12, [1, 3, 4]));
+    let b = var!(array1!(0..4));
+
+    let y = F::linear(x, w, Some(b));
+    let loss = y.sum();
+    loss.backward();
+
+    assert_eq!(x.get_grad().get_shape(), &[2, 1, 3]);
+    assert_eq!(w.get_grad().get_shape(), &[1, 3, 4]);
+    assert_eq!(b.get_grad().get_shape(), &[4]);
 }

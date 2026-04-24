@@ -25,6 +25,18 @@ impl Function for Linear {
             .collect();
         let gx = gy.matmul(&x[1].clone().transpose());
         let gw = x[0].clone().transpose().matmul(&gy);
+
+        let gx = if gx.get_shape() != x[0].get_shape() {
+            gx.sum_to(x[0].get_shape())
+        } else {
+            gx
+        };
+        let gw = if gw.get_shape() != x[1].get_shape() {
+            gw.sum_to(x[1].get_shape())
+        } else {
+            gw
+        };
+
         if self.bias {
             vec![gx, gw, gy.sum_to(x[2].get_shape())]
         } else {

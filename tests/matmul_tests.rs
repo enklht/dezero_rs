@@ -1,6 +1,6 @@
 extern crate dezero;
 
-use dezero::{array::Array, array0, array1};
+use dezero::{array::Array, array0, array1, array_with_shape};
 
 #[test]
 fn matmul1() {
@@ -36,4 +36,40 @@ fn matmul4() {
     let c = Array::ones(&[9, 5, 4, 3]);
 
     assert_eq!(a.matmul(&c).get_shape(), &[9, 5, 7, 3])
+}
+
+#[test]
+fn matmul5_broadcast_stack_order() {
+    let lhs = array1!(0..8).reshape(&[2, 1, 2, 2]);
+    let rhs = array1!(0..12).reshape(&[1, 3, 2, 2]);
+
+    assert_eq!(lhs.matmul(&rhs).get_shape(), &[2, 3, 2, 2]);
+    assert_eq!(
+        lhs.matmul(&rhs),
+        array_with_shape!(
+            [
+                2., 3., 6., 11., 6., 7., 26., 31., 10., 11., 46., 51., 10., 19., 14., 27.,
+                46., 55., 66., 79., 82., 91., 118., 131.
+            ],
+            [2, 3, 2, 2]
+        )
+    );
+}
+
+#[test]
+fn matmul6_vector_matrix_shape() {
+    let v = array1!([1., 2., 3.]);
+    let m = array_with_shape!([1., 2., 3., 4., 5., 6.], [3, 2]);
+
+    assert_eq!(v.matmul(&m).get_shape(), &[2]);
+    assert_eq!(v.matmul(&m), array1!([22., 28.]));
+}
+
+#[test]
+fn matmul7_matrix_vector_shape() {
+    let m = array_with_shape!([1., 2., 3., 4., 5., 6.], [2, 3]);
+    let v = array1!([1., 2., 3.]);
+
+    assert_eq!(m.matmul(&v).get_shape(), &[2]);
+    assert_eq!(m.matmul(&v), array1!([14., 32.]));
 }

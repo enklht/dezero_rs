@@ -5,7 +5,7 @@ impl Array {
         (self - rhs)
             .data
             .iter()
-            .try_for_each(|x| if x < &tol { Some(()) } else { None })
+            .try_for_each(|x| if x.abs() < tol { Some(()) } else { None })
             .is_some()
     }
 

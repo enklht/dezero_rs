@@ -1,6 +1,32 @@
 use super::{utils::*, Array};
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
+fn unravel_index(mut index: usize, shape: &[usize]) -> Vec<usize> {
+    if shape.is_empty() {
+        return Vec::new();
+    }
+
+    let mut coords = vec![0; shape.len()];
+    for axis in (0..shape.len()).rev() {
+        coords[axis] = index % shape[axis];
+        index /= shape[axis];
+    }
+    coords
+}
+
+fn batch_index_from_broadcast(coords: &[usize], src_shape: &[usize], lead: usize) -> usize {
+    if src_shape.is_empty() {
+        return 0;
+    }
+
+    let mut index = 0;
+    for (axis, &dim) in src_shape.iter().enumerate() {
+        let coord = if dim == 1 { 0 } else { coords[lead + axis] };
+        index = index * dim + coord;
+    }
+    index
+}
+
 macro_rules! define_map_functions {
     ($($fname: ident),*) => {
         $(
@@ -134,7 +160,7 @@ impl Array {
         match self.shape.len() {
             0 | 1 => self.clone(),
             2 => self.transpose2d(),
-            _ => todo!("transpose for array with dim > 3 is not implemented"),
+            _ => self.transpose_nd(),
         }
     }
 
@@ -150,6 +176,33 @@ impl Array {
             data,
             shape: vec![n, m],
             size: m * n,
+        }
+    }
+
+    fn transpose_nd(&self) -> Array {
+        let dim = self.shape.len();
+        let m = self.shape[dim - 2];
+        let n = self.shape[dim - 1];
+        let batch = self.size / (m * n);
+
+        let mut data = Vec::with_capacity(self.size);
+        for b in 0..batch {
+            let offset = b * m * n;
+            for i in 0..n {
+                for j in 0..m {
+                    data.push(self.data[offset + n * j + i]);
+                }
+            }
+        }
+
+        let mut shape = self.shape.clone();
+        shape[dim - 2] = n;
+        shape[dim - 1] = m;
+
+        Array {
+            data,
+            shape,
+            size: self.size,
         }
     }
 
@@ -192,26 +245,40 @@ impl Array {
             panic!("invalid shape")
         }
 
-        let mut new_shape = shape_after_broadcast(lstackshape, rstackshape).unwrap();
-        new_shape.append(&mut vec![l, n]);
+        let stack_shape = shape_after_broadcast(lstackshape, rstackshape).unwrap();
+        let mut new_shape = stack_shape.clone();
+        new_shape.extend([l, n]);
 
         let new_size: usize = new_shape.iter().product();
+        let num_batches: usize = stack_shape.iter().product();
+        let out_stack_dim = stack_shape.len();
+        let lhs_lead = out_stack_dim - lstackshape.len();
+        let rhs_lead = out_stack_dim - rstackshape.len();
 
-        let data = self
-            .data
-            .chunks(l * m)
-            .cycle()
-            .take(new_size / l / n)
-            .zip(rhs.data.chunks(m * n).cycle().take(new_size / l / n))
-            .flat_map(|(lhs, rhs)| matmul_2d(lhs, rhs, (l, m, n)))
-            .collect();
+        let lhs_chunk_size = l * m;
+        let rhs_chunk_size = m * n;
 
-        let len = new_shape.len();
-        if l_squeeze_flag {
-            new_shape.remove(len - 1);
+        let mut data = Vec::with_capacity(new_size);
+        for batch in 0..num_batches {
+            let coords = unravel_index(batch, &stack_shape);
+            let lhs_batch = batch_index_from_broadcast(&coords, lstackshape, lhs_lead);
+            let rhs_batch = batch_index_from_broadcast(&coords, rstackshape, rhs_lead);
+
+            let lhs_start = lhs_batch * lhs_chunk_size;
+            let rhs_start = rhs_batch * rhs_chunk_size;
+            let lhs = &self.data[lhs_start..lhs_start + lhs_chunk_size];
+            let rhs = &rhs.data[rhs_start..rhs_start + rhs_chunk_size];
+
+            data.extend(matmul_2d(lhs, rhs, (l, m, n)));
         }
-        if r_squeeze_flag {
-            new_shape.remove(len - 2);
+
+        if l_squeeze_flag && r_squeeze_flag {
+            new_shape.pop();
+            new_shape.pop();
+        } else if l_squeeze_flag {
+            new_shape.remove(new_shape.len() - 2);
+        } else if r_squeeze_flag {
+            new_shape.pop();
         }
 
         Array::new(data, new_shape)
