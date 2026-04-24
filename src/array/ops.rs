@@ -1,31 +1,6 @@
 use super::{utils::*, Array};
+use ndarray::{ArrayD, Axis};
 use std::ops::{Add, Div, Mul, Neg, Sub};
-
-fn unravel_index(mut index: usize, shape: &[usize]) -> Vec<usize> {
-    if shape.is_empty() {
-        return Vec::new();
-    }
-
-    let mut coords = vec![0; shape.len()];
-    for axis in (0..shape.len()).rev() {
-        coords[axis] = index % shape[axis];
-        index /= shape[axis];
-    }
-    coords
-}
-
-fn batch_index_from_broadcast(coords: &[usize], src_shape: &[usize], lead: usize) -> usize {
-    if src_shape.is_empty() {
-        return 0;
-    }
-
-    let mut index = 0;
-    for (axis, &dim) in src_shape.iter().enumerate() {
-        let coord = if dim == 1 { 0 } else { coords[lead + axis] };
-        index = index * dim + coord;
-    }
-    index
-}
 
 macro_rules! define_map_functions {
     ($($fname: ident),*) => {
@@ -41,235 +16,203 @@ impl Array {
     where
         F: Fn(f32) -> f32,
     {
-        let data = self.data.iter().map(|&a| f(a)).collect();
-        Array::new(data, self.shape.clone())
+        let data = self.data.mapv(f);
+        Array { data }
     }
 
     define_map_functions!(exp, ln, sin, cos, tan, sinh, cosh, tanh);
 
     pub fn powi(&self, n: i32) -> Array {
-        let data = self.data.iter().map(|a| a.powi(n)).collect();
-        Array::new(data, self.shape.clone())
+        let data = self.data.mapv(|a| a.powi(n));
+        Array { data }
     }
 
     pub fn powf(&self, n: f32) -> Array {
-        let data = self.data.iter().map(|a| a.powf(n)).collect();
-        Array::new(data, self.shape.clone())
+        let data = self.data.mapv(|a| a.powf(n));
+        Array { data }
     }
 
     pub fn sum(&self) -> Array {
-        Array {
-            data: vec![self.data.iter().sum()],
-            shape: vec![],
-            size: 1,
-        }
+        let data = ArrayD::from_elem(vec![], self.data.sum());
+        Array { data }
     }
 
     pub fn sum_to(&self, shape: &[usize]) -> Array {
-        if self.shape == shape {
+        if self.data.shape() == shape {
             return self.clone();
         }
 
-        let Some(lead) = self.shape.len().checked_sub(shape.len()) else {
-            panic!("failed to sum {:?} to {:?}", shape, self.shape)
+        let Some(lead) = self.data.ndim().checked_sub(shape.len()) else {
+            panic!("failed to sum {:?} to {:?}", shape, self.data.shape())
         };
 
-        let tmp = vec![1; lead];
-        let new_shape = tmp
-            .into_iter()
-            .chain(shape.iter().cloned())
-            .collect::<Vec<_>>();
+        let mut new_shape = vec![1; lead];
+        new_shape.extend_from_slice(shape);
 
         let mut axes = Vec::new();
-        for (axis, (i, j)) in self.shape.iter().zip(new_shape.iter()).enumerate() {
+        for (axis, (i, j)) in self.data.shape().iter().zip(new_shape.iter()).enumerate() {
             match (i, j) {
                 (i, j) if i == j => {}
-                (_, 1) => {
-                    axes.push(axis);
-                }
-                _ => panic!("failed to sum {:?} to {:?}", self.shape, shape),
+                (_, 1) => axes.push(axis),
+                _ => panic!("failed to sum {:?} to {:?}", self.data.shape(), shape),
             }
         }
 
         let mut data = self.data.clone();
-        let dim = self.shape.len();
-
-        let mut steps = vec![1];
-        for x in self.shape.iter().rev() {
-            steps.push(steps.last().unwrap() * x);
+        for axis in axes.into_iter().rev() {
+            data = data.sum_axis(Axis(axis)).insert_axis(Axis(axis));
         }
 
-        for axis in axes {
-            let mut new_data = Vec::new();
-            let step = steps[dim - axis - 1];
-            for i in 0..(data.len() / steps[dim - axis]) {
-                for j in 0..step {
-                    new_data.push(
-                        data[steps[dim - axis] * i + j..]
-                            .iter()
-                            .step_by(step)
-                            .take(self.shape[axis])
-                            .sum(),
-                    )
-                }
-            }
-            data = new_data;
-        }
-
-        Array::new(data, shape.to_vec())
+        let data = data
+            .into_shape_with_order(shape.to_vec())
+            .expect("Invalid shape");
+        Array { data }
     }
 
     pub fn sum_with_axis(&self, axis: usize) -> Array {
-        let mut shape = self.shape.clone();
+        let mut shape = self.data.shape().to_vec();
         shape[axis] = 1;
         self.sum_to(&shape)
     }
 
     pub fn broadcast_to(&self, shape: &[usize]) -> Array {
-        if self.shape == shape {
+        if self.data.shape() == shape {
             return self.clone();
         }
-        let Some(lead) = shape.len().checked_sub(self.shape.len()) else {
-            panic!("failed to broadcast {:?} to {:?}", self.shape, shape)
+        let Some(view) = self.data.broadcast(shape.to_vec()) else {
+            panic!("failed to broadcast {:?} to {:?}", self.data.shape(), shape)
         };
-
-        let tmp = vec![1; lead];
-        let old_shape = tmp
-            .into_iter()
-            .chain(self.shape.clone())
-            .collect::<Vec<_>>();
-
-        let data = broadcast_to(&self.data, &old_shape, shape);
-
-        Array::new(data, shape.to_vec())
+        Array {
+            data: view.to_owned(),
+        }
     }
 
     pub fn reshape(self, new_shape: &[usize]) -> Array {
-        let new_size = new_shape.iter().product();
-        if self.size != new_size {
-            panic!("Cannot convert {:?} to {:?}", self.shape, new_shape)
+        let new_size: usize = new_shape.iter().product();
+        if self.data.len() != new_size {
+            panic!("Cannot convert {:?} to {:?}", self.data.shape(), new_shape)
         }
-        Array {
-            data: self.data,
-            shape: new_shape.to_vec(),
-            size: self.size,
-        }
+        let data = self
+            .data
+            .into_shape_with_order(new_shape.to_vec())
+            .expect("Invalid shape");
+        Array { data }
     }
 
     pub fn transpose(&self) -> Array {
-        match self.shape.len() {
-            0 | 1 => self.clone(),
-            2 => self.transpose2d(),
-            _ => self.transpose_nd(),
+        let dim = self.data.ndim();
+        if dim < 2 {
+            return self.clone();
         }
-    }
-
-    fn transpose2d(&self) -> Array {
-        let (m, n) = (self.shape[0], self.shape[1]);
-        let mut data = Vec::with_capacity(self.size);
-        for i in 0..n {
-            for j in 0..m {
-                data.push(self.data[n * j + i])
-            }
-        }
+        let mut axes: Vec<usize> = (0..dim).collect();
+        axes.swap(dim - 2, dim - 1);
         Array {
-            data,
-            shape: vec![n, m],
-            size: m * n,
-        }
-    }
-
-    fn transpose_nd(&self) -> Array {
-        let dim = self.shape.len();
-        let m = self.shape[dim - 2];
-        let n = self.shape[dim - 1];
-        let batch = self.size / (m * n);
-
-        let mut data = Vec::with_capacity(self.size);
-        for b in 0..batch {
-            let offset = b * m * n;
-            for i in 0..n {
-                for j in 0..m {
-                    data.push(self.data[offset + n * j + i]);
-                }
-            }
-        }
-
-        let mut shape = self.shape.clone();
-        shape[dim - 2] = n;
-        shape[dim - 1] = m;
-
-        Array {
-            data,
-            shape,
-            size: self.size,
+            data: self.data.clone().permuted_axes(axes),
         }
     }
 
     pub fn matmul(&self, rhs: &Array) -> Array {
-        let ldim = self.shape.len();
-        let rdim = rhs.shape.len();
+        let ldim = self.data.ndim();
+        let rdim = rhs.data.ndim();
         if ldim == 0 || rdim == 0 {
             panic!("Scaler cannot be multiplied with matrices using matmul.")
         }
 
         let (l_squeeze_flag, r_squeeze_flag): (bool, bool);
         let (l, m, m_, n): (usize, usize, usize, usize);
-        let (lstackshape, rstackshape): (&[usize], &[usize]);
+        let (lstackshape, rstackshape): (Vec<usize>, Vec<usize>);
 
         if ldim == 1 {
             l_squeeze_flag = true;
             l = 1;
-            m = self.shape[0];
-            lstackshape = &[];
+            m = self.data.shape()[0];
+            lstackshape = Vec::new();
         } else {
             l_squeeze_flag = false;
-            l = self.shape[ldim - 2];
-            m = self.shape[ldim - 1];
-            lstackshape = &self.shape[..ldim - 2]
+            l = self.data.shape()[ldim - 2];
+            m = self.data.shape()[ldim - 1];
+            lstackshape = self.data.shape()[..ldim - 2].to_vec();
         };
 
         if rdim == 1 {
             r_squeeze_flag = true;
-            m_ = rhs.shape[0];
+            m_ = rhs.data.shape()[0];
             n = 1;
-            rstackshape = &[];
+            rstackshape = Vec::new();
         } else {
             r_squeeze_flag = false;
-            m_ = rhs.shape[rdim - 2];
-            n = rhs.shape[rdim - 1];
-            rstackshape = &rhs.shape[..rdim - 2]
+            m_ = rhs.data.shape()[rdim - 2];
+            n = rhs.data.shape()[rdim - 1];
+            rstackshape = rhs.data.shape()[..rdim - 2].to_vec();
         };
 
         if m != m_ {
             panic!("invalid shape")
         }
 
-        let stack_shape = shape_after_broadcast(lstackshape, rstackshape).unwrap();
+        let stack_shape = shape_after_broadcast(&lstackshape, &rstackshape).unwrap();
         let mut new_shape = stack_shape.clone();
         new_shape.extend([l, n]);
 
-        let new_size: usize = new_shape.iter().product();
+        let lhs_target = stack_shape
+            .iter()
+            .cloned()
+            .chain([l, m])
+            .collect::<Vec<_>>();
+        let rhs_target = stack_shape
+            .iter()
+            .cloned()
+            .chain([m, n])
+            .collect::<Vec<_>>();
+
+        let mut lhs_view = self.data.view();
+        if ldim == 1 {
+            lhs_view = lhs_view.insert_axis(Axis(0));
+        }
+        while lhs_view.ndim() < lhs_target.len() {
+            lhs_view = lhs_view.insert_axis(Axis(0));
+        }
+
+        let mut rhs_view = rhs.data.view();
+        if rdim == 1 {
+            rhs_view = rhs_view.insert_axis(Axis(1));
+        }
+        while rhs_view.ndim() < rhs_target.len() {
+            rhs_view = rhs_view.insert_axis(Axis(0));
+        }
+
+        let lhs = lhs_view
+            .broadcast(lhs_target.clone())
+            .expect("invalid broadcast for lhs")
+            .to_owned();
+        let rhs = rhs_view
+            .broadcast(rhs_target.clone())
+            .expect("invalid broadcast for rhs")
+            .to_owned();
+
         let num_batches: usize = stack_shape.iter().product();
-        let out_stack_dim = stack_shape.len();
-        let lhs_lead = out_stack_dim - lstackshape.len();
-        let rhs_lead = out_stack_dim - rstackshape.len();
+        let lhs = lhs
+            .to_shape((num_batches, l, m))
+            .expect("invalid shape")
+            .to_owned();
+        let rhs = rhs
+            .to_shape((num_batches, m, n))
+            .expect("invalid shape")
+            .to_owned();
 
-        let lhs_chunk_size = l * m;
-        let rhs_chunk_size = m * n;
-
-        let mut data = Vec::with_capacity(new_size);
-        for batch in 0..num_batches {
-            let coords = unravel_index(batch, &stack_shape);
-            let lhs_batch = batch_index_from_broadcast(&coords, lstackshape, lhs_lead);
-            let rhs_batch = batch_index_from_broadcast(&coords, rstackshape, rhs_lead);
-
-            let lhs_start = lhs_batch * lhs_chunk_size;
-            let rhs_start = rhs_batch * rhs_chunk_size;
-            let lhs = &self.data[lhs_start..lhs_start + lhs_chunk_size];
-            let rhs = &rhs.data[rhs_start..rhs_start + rhs_chunk_size];
-
-            data.extend(matmul_2d(lhs, rhs, (l, m, n)));
+        let mut out = Vec::with_capacity(num_batches * l * n);
+        for b in 0..num_batches {
+            let lhs_b = lhs.index_axis(Axis(0), b);
+            let rhs_b = rhs.index_axis(Axis(0), b);
+            for i in 0..l {
+                for j in 0..n {
+                    let mut acc = 0.0;
+                    for k in 0..m {
+                        acc += lhs_b[(i, k)] * rhs_b[(k, j)];
+                    }
+                    out.push(acc);
+                }
+            }
         }
 
         if l_squeeze_flag && r_squeeze_flag {
@@ -281,12 +224,12 @@ impl Array {
             new_shape.pop();
         }
 
-        Array::new(data, new_shape)
+        Array::new(out, new_shape)
     }
 
     pub fn relu_max(&self, rhs: f32) -> Array {
-        let data = self.data.iter().map(|a| a.max(rhs)).collect();
-        Array::new(data, self.shape.clone())
+        let data = self.data.mapv(|a| a.max(rhs));
+        Array { data }
     }
 
     pub fn relu_mask(&self, rhs: &Array, threshold: f32) -> Array {
@@ -295,44 +238,21 @@ impl Array {
             .iter()
             .zip(rhs.data.iter())
             .map(|(&x, &y)| if x > threshold { y } else { 0. })
-            .collect();
-        Array::new(data, self.shape.clone())
+            .collect::<Vec<_>>();
+        Array::new(data, self.data.shape().to_vec())
     }
 
     pub fn clip(&self, lowerbound: f32, upperbound: f32) -> Array {
-        let data = self
-            .data
-            .iter()
-            .map(|&x| x.min(upperbound).max(lowerbound))
-            .collect();
-        Array::new(data, self.shape.clone())
+        let data = self.data.mapv(|x| x.min(upperbound).max(lowerbound));
+        Array { data }
     }
 
     pub fn max(&self, axis: usize) -> Array {
-        let stride: usize = self.shape[..axis].iter().product();
-        let step: usize = if axis >= self.shape.len() {
-            1
-        } else {
-            self.shape[axis + 1..].iter().product()
-        };
-        let num_summand: usize = self.shape[axis];
-
-        let mut data: Vec<f32> = Vec::new();
-        for i in 0..stride {
-            for j in 0..step {
-                data.push(
-                    self.data[step * num_summand * i + j..]
-                        .iter()
-                        .step_by(step)
-                        .take(num_summand)
-                        .fold(f32::NEG_INFINITY, |x, y| x.max(*y)),
-                )
-            }
-        }
-
-        let mut shape = self.shape.clone();
-        shape[axis] = 1;
-        Array::new(data, shape)
+        let data = self
+            .data
+            .map_axis(Axis(axis), |v| v.fold(f32::NEG_INFINITY, |x, y| x.max(*y)))
+            .insert_axis(Axis(axis));
+        Array { data }
     }
 }
 
@@ -341,15 +261,15 @@ macro_rules! impl_op {
         impl $trait for &Array {
             type Output = Array;
             fn $fname(self, rhs: Self) -> Self::Output {
-                if self.shape.is_empty() {
-                    return self.data[0].$fname(rhs);
+                if self.data.ndim() == 0 {
+                    return self.data[[]].$fname(rhs);
                 }
-                if rhs.shape.is_empty() {
-                    return self.$fname(rhs.data[0]);
+                if rhs.data.ndim() == 0 {
+                    return self.$fname(rhs.data[[]]);
                 }
-                if self.shape != rhs.shape {
-                    let new_shape =
-                        shape_after_broadcast(&self.shape, &rhs.shape).expect(&format!(
+                if self.data.shape() != rhs.data.shape() {
+                    let new_shape = shape_after_broadcast(self.data.shape(), rhs.data.shape())
+                        .expect(&format!(
                             "Two arrays must have the same shape\nlhs: {:?}\nrhs: {:?}",
                             self, rhs,
                         ));
@@ -359,27 +279,18 @@ macro_rules! impl_op {
 
                     let data = ldata
                         .iter()
-                        .zip(rdata)
-                        .map(|(x, y)| f32::$fname(*x, y))
-                        .collect();
-                    let size = new_shape.iter().product();
-                    Array {
-                        data,
-                        shape: new_shape,
-                        size,
-                    }
+                        .zip(rdata.iter())
+                        .map(|(x, y)| f32::$fname(*x, *y))
+                        .collect::<Vec<_>>();
+                    Array::new(data, new_shape)
                 } else {
                     let data = self
                         .data
                         .iter()
                         .zip(rhs.data.iter())
-                        .map(|(x, y)| f32::$fname(*x, y))
-                        .collect();
-                    Array {
-                        data,
-                        shape: self.shape.clone(),
-                        size: self.size,
-                    }
+                        .map(|(x, y)| f32::$fname(*x, *y))
+                        .collect::<Vec<_>>();
+                    Array::new(data, self.data.shape().to_vec())
                 }
             }
         }
@@ -422,24 +333,16 @@ macro_rules! impl_op {
         impl $trait<f32> for &Array {
             type Output = Array;
             fn $fname(self, rhs: f32) -> Self::Output {
-                let data = self.data.iter().map(|x| f32::$fname(*x, rhs)).collect();
-                Array {
-                    data,
-                    shape: self.shape.clone(),
-                    size: self.size,
-                }
+                let data = self.data.mapv(|x| f32::$fname(x, rhs));
+                Array { data }
             }
         }
 
         impl $trait<&Array> for f32 {
             type Output = Array;
             fn $fname(self, rhs: &Array) -> Self::Output {
-                let data = rhs.data.iter().map(|x| f32::$fname(self, x)).collect();
-                Array {
-                    data,
-                    shape: rhs.shape.clone(),
-                    size: rhs.size,
-                }
+                let data = rhs.data.mapv(|x| f32::$fname(self, x));
+                Array { data }
             }
         }
     };
@@ -453,8 +356,8 @@ impl_op!(Div, div);
 impl Neg for Array {
     type Output = Array;
     fn neg(self) -> Self::Output {
-        let data = self.data.iter().map(|a| -a).collect();
-        Array::new(data, self.shape.clone())
+        let data = self.data.mapv(|a| -a);
+        Array { data }
     }
 }
 
