@@ -1,6 +1,6 @@
 use super::{utils::*, Array};
-use ndarray::{ArrayD, ArrayView1, ArrayView2, Axis, Ix1, Ix2};
-use std::ops::{Add, Div, Mul, Neg, Sub};
+use ndarray::{ArrayD, ArrayView1, ArrayView2, Axis, Ix1, Ix2, Zip};
+use std::ops::{Add, Div, Index, IndexMut, Mul, Neg, Sub};
 
 macro_rules! define_map_functions {
     ($($fname: ident),*) => {
@@ -23,13 +23,15 @@ impl Array {
     define_map_functions!(exp, ln, sin, cos, tan, sinh, cosh, tanh);
 
     pub fn powi(&self, n: i32) -> Array {
-        let data = self.data.mapv(|a| a.powi(n));
-        Array { data }
+        Array {
+            data: self.data.powi(n),
+        }
     }
 
     pub fn powf(&self, n: f32) -> Array {
-        let data = self.data.mapv(|a| a.powf(n));
-        Array { data }
+        Array {
+            data: self.data.powf(n),
+        }
     }
 
     pub fn sum(&self) -> Array {
@@ -70,9 +72,8 @@ impl Array {
     }
 
     pub fn sum_with_axis(&self, axis: usize) -> Array {
-        let mut shape = self.data.shape().to_vec();
-        shape[axis] = 1;
-        self.sum_to(&shape)
+        let data = self.data.sum_axis(Axis(axis));
+        Array { data }
     }
 
     pub fn broadcast_to(&self, shape: &[usize]) -> Array {
@@ -88,15 +89,9 @@ impl Array {
     }
 
     pub fn reshape(&self, new_shape: &[usize]) -> Array {
-        let new_size: usize = new_shape.iter().product();
-        if self.data.len() != new_size {
+        let Ok(data) = self.data.clone().into_shape_with_order(new_shape.to_vec()) else {
             panic!("Cannot convert {:?} to {:?}", self.data.shape(), new_shape)
-        }
-        let data = self
-            .data
-            .clone()
-            .into_shape_with_order(new_shape.to_vec())
-            .expect("Invalid shape");
+        };
         Array { data }
     }
 
@@ -126,21 +121,21 @@ impl Array {
         }
         if ldim == 1 && rdim == 2 {
             let out = as_ix1(&self.data).dot(&as_ix2(&rhs.data));
-            let shape = out.shape().to_vec();
-            let data = out.iter().cloned().collect::<Vec<_>>();
-            return Array::new(data, shape);
+            return Array {
+                data: out.into_dyn(),
+            };
         }
         if ldim == 2 && rdim == 1 {
             let out = as_ix2(&self.data).dot(&as_ix1(&rhs.data));
-            let shape = out.shape().to_vec();
-            let data = out.iter().cloned().collect::<Vec<_>>();
-            return Array::new(data, shape);
+            return Array {
+                data: out.into_dyn(),
+            };
         }
         if ldim == 2 && rdim == 2 {
             let out = as_ix2(&self.data).dot(&as_ix2(&rhs.data));
-            let shape = out.shape().to_vec();
-            let data = out.iter().cloned().collect::<Vec<_>>();
-            return Array::new(data, shape);
+            return Array {
+                data: out.into_dyn(),
+            };
         }
 
         matmul_general(self, rhs)
@@ -152,13 +147,12 @@ impl Array {
     }
 
     pub fn relu_mask(&self, rhs: &Array, threshold: f32) -> Array {
-        let data = self
-            .data
-            .iter()
-            .zip(rhs.data.iter())
-            .map(|(&x, &y)| if x > threshold { y } else { 0. })
-            .collect::<Vec<_>>();
-        Array::new(data, self.data.shape().to_vec())
+        let mut data = ArrayD::zeros(self.data.shape());
+        Zip::from(&mut data)
+            .and(&self.data)
+            .and(&rhs.data)
+            .for_each(|o, &x, &y| *o = if x > threshold { y } else { 0. });
+        Array { data }
     }
 
     pub fn clip(&self, lowerbound: f32, upperbound: f32) -> Array {
@@ -170,6 +164,14 @@ impl Array {
         let data = self
             .data
             .map_axis(Axis(axis), |v| v.fold(f32::NEG_INFINITY, |x, y| x.max(*y)))
+            .insert_axis(Axis(axis));
+        Array { data }
+    }
+
+    pub fn min(&self, axis: usize) -> Array {
+        let data = self
+            .data
+            .map_axis(Axis(axis), |v| v.fold(f32::INFINITY, |x, y| x.min(*y)))
             .insert_axis(Axis(axis));
         Array { data }
     }
@@ -293,41 +295,26 @@ fn as_ix2(data: &ArrayD<f32>) -> ArrayView2<'_, f32> {
         .expect("invalid shape")
 }
 
+impl<const N: usize> Index<[usize; N]> for Array {
+    type Output = f32;
+    fn index(&self, index: [usize; N]) -> &Self::Output {
+        &self.data[index]
+    }
+}
+
+impl<const N: usize> IndexMut<[usize; N]> for Array {
+    fn index_mut(&mut self, index: [usize; N]) -> &mut Self::Output {
+        &mut self.data[index]
+    }
+}
+
 macro_rules! impl_op {
     ($trait: ident, $fname: ident) => {
         impl $trait for &Array {
             type Output = Array;
             fn $fname(self, rhs: Self) -> Self::Output {
-                if self.data.ndim() == 0 {
-                    return self.data[[]].$fname(rhs);
-                }
-                if rhs.data.ndim() == 0 {
-                    return self.$fname(rhs.data[[]]);
-                }
-                if self.data.shape() != rhs.data.shape() {
-                    let new_shape = shape_after_broadcast(self.data.shape(), rhs.data.shape())
-                        .expect(&format!(
-                            "Two arrays must have the same shape\nlhs: {:?}\nrhs: {:?}",
-                            self, rhs,
-                        ));
-
-                    let ldata = self.broadcast_to(&new_shape).data;
-                    let rdata = rhs.broadcast_to(&new_shape).data;
-
-                    let data = ldata
-                        .iter()
-                        .zip(rdata.iter())
-                        .map(|(x, y)| f32::$fname(*x, *y))
-                        .collect::<Vec<_>>();
-                    Array::new(data, new_shape)
-                } else {
-                    let data = self
-                        .data
-                        .iter()
-                        .zip(rhs.data.iter())
-                        .map(|(x, y)| f32::$fname(*x, *y))
-                        .collect::<Vec<_>>();
-                    Array::new(data, self.data.shape().to_vec())
+                Array {
+                    data: self.data.clone().$fname(&rhs.data),
                 }
             }
         }
@@ -370,16 +357,18 @@ macro_rules! impl_op {
         impl $trait<f32> for &Array {
             type Output = Array;
             fn $fname(self, rhs: f32) -> Self::Output {
-                let data = self.data.mapv(|x| f32::$fname(x, rhs));
-                Array { data }
+                Array {
+                    data: ArrayD::$fname(self.data.clone(), rhs),
+                }
             }
         }
 
         impl $trait<&Array> for f32 {
             type Output = Array;
             fn $fname(self, rhs: &Array) -> Self::Output {
-                let data = rhs.data.mapv(|x| f32::$fname(self, x));
-                Array { data }
+                Array {
+                    data: f32::$fname(self, rhs.data.clone()),
+                }
             }
         }
     };
@@ -393,8 +382,7 @@ impl_op!(Div, div);
 impl Neg for Array {
     type Output = Array;
     fn neg(self) -> Self::Output {
-        let data = self.data.mapv(|a| -a);
-        Array { data }
+        Array { data: -self.data }
     }
 }
 

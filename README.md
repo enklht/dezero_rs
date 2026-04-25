@@ -16,8 +16,6 @@ It serves as an experimental platform for my personal learning and exploration o
 ## Features
 
 - **Pure Rust Implementation:** `dezero_rs` is built entirely in Rust, aiming to leverage the language's safety and performance characteristics for educational purposes.
-- **Manual Linear Algebra:** Linear algebra operations are implemented manually using vectors.
-  This manual approach provides a deeper understanding of the underlying mathematics, albeit at the cost of slower computation speeds.
 
 ## Current Limitations
 

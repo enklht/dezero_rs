@@ -151,11 +151,10 @@ impl Function for SoftmaxCrossEntropy {
 
         let log_z = logsumexp(x, 1);
         let log_p = x - &log_z;
-        let log_p_data = log_p.get_data();
 
         let mut loss = 0.0;
         for (row, &label) in t.get_data().iter().enumerate() {
-            loss -= log_p_data[[row, label as usize]];
+            loss -= log_p[[row, label as usize]];
         }
         loss /= n as f32;
 
@@ -173,12 +172,12 @@ impl Function for SoftmaxCrossEntropy {
         let (x, t) = (&x[0], &x[1]);
         let n = x.shape()[0];
 
-        let mut y = softmax(x, 1).get_data();
+        let mut y = softmax(x, 1);
         for (row, &label) in t.get_data().iter().enumerate() {
             y[[row, label as usize]] -= 1.0;
         }
-        y = y * gy.get_data() / n as f32;
+        y = y * gy / n as f32;
 
-        vec![Array::from_ndarray(y)]
+        vec![y]
     }
 }
