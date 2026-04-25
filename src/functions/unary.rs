@@ -59,7 +59,7 @@ define!(Reshape, shape_in: Vec<usize>, shape_out: Vec<usize>);
 impl Function for Reshape {
     impl_getters_setters!();
     fn forward(&self, x: Vec<Array>) -> Array {
-        x[0].clone().reshape(&self.shape_out)
+        x[0].reshape(&self.shape_out)
     }
     fn backward(&self, gy: Array) -> Vec<Array> {
         vec![gy.reshape(&self.shape_in)]
@@ -71,7 +71,7 @@ define!(Transpose,);
 impl Function for Transpose {
     impl_getters_setters!();
     fn forward(&self, x: Vec<Array>) -> Array {
-        x[0].clone().transpose()
+        x[0].transpose()
     }
     fn backward(&self, gy: Array) -> Vec<Array> {
         vec![gy.transpose()]

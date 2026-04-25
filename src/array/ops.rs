@@ -1,5 +1,5 @@
 use super::{utils::*, Array};
-use ndarray::{ArrayD, Axis};
+use ndarray::{ArrayD, ArrayView1, ArrayView2, Axis, Ix1, Ix2};
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
 macro_rules! define_map_functions {
@@ -87,13 +87,14 @@ impl Array {
         }
     }
 
-    pub fn reshape(self, new_shape: &[usize]) -> Array {
+    pub fn reshape(&self, new_shape: &[usize]) -> Array {
         let new_size: usize = new_shape.iter().product();
         if self.data.len() != new_size {
             panic!("Cannot convert {:?} to {:?}", self.data.shape(), new_shape)
         }
         let data = self
             .data
+            .clone()
             .into_shape_with_order(new_shape.to_vec())
             .expect("Invalid shape");
         Array { data }
@@ -118,113 +119,31 @@ impl Array {
             panic!("Scaler cannot be multiplied with matrices using matmul.")
         }
 
-        let (l_squeeze_flag, r_squeeze_flag): (bool, bool);
-        let (l, m, m_, n): (usize, usize, usize, usize);
-        let (lstackshape, rstackshape): (Vec<usize>, Vec<usize>);
-
-        if ldim == 1 {
-            l_squeeze_flag = true;
-            l = 1;
-            m = self.data.shape()[0];
-            lstackshape = Vec::new();
-        } else {
-            l_squeeze_flag = false;
-            l = self.data.shape()[ldim - 2];
-            m = self.data.shape()[ldim - 1];
-            lstackshape = self.data.shape()[..ldim - 2].to_vec();
-        };
-
-        if rdim == 1 {
-            r_squeeze_flag = true;
-            m_ = rhs.data.shape()[0];
-            n = 1;
-            rstackshape = Vec::new();
-        } else {
-            r_squeeze_flag = false;
-            m_ = rhs.data.shape()[rdim - 2];
-            n = rhs.data.shape()[rdim - 1];
-            rstackshape = rhs.data.shape()[..rdim - 2].to_vec();
-        };
-
-        if m != m_ {
-            panic!("invalid shape")
+        if ldim == 1 && rdim == 1 {
+            let val = as_ix1(&self.data).dot(&as_ix1(&rhs.data));
+            let data = ArrayD::from_elem(vec![], val);
+            return Array { data };
+        }
+        if ldim == 1 && rdim == 2 {
+            let out = as_ix1(&self.data).dot(&as_ix2(&rhs.data));
+            let shape = out.shape().to_vec();
+            let data = out.iter().cloned().collect::<Vec<_>>();
+            return Array::new(data, shape);
+        }
+        if ldim == 2 && rdim == 1 {
+            let out = as_ix2(&self.data).dot(&as_ix1(&rhs.data));
+            let shape = out.shape().to_vec();
+            let data = out.iter().cloned().collect::<Vec<_>>();
+            return Array::new(data, shape);
+        }
+        if ldim == 2 && rdim == 2 {
+            let out = as_ix2(&self.data).dot(&as_ix2(&rhs.data));
+            let shape = out.shape().to_vec();
+            let data = out.iter().cloned().collect::<Vec<_>>();
+            return Array::new(data, shape);
         }
 
-        let stack_shape = shape_after_broadcast(&lstackshape, &rstackshape).unwrap();
-        let mut new_shape = stack_shape.clone();
-        new_shape.extend([l, n]);
-
-        let lhs_target = stack_shape
-            .iter()
-            .cloned()
-            .chain([l, m])
-            .collect::<Vec<_>>();
-        let rhs_target = stack_shape
-            .iter()
-            .cloned()
-            .chain([m, n])
-            .collect::<Vec<_>>();
-
-        let mut lhs_view = self.data.view();
-        if ldim == 1 {
-            lhs_view = lhs_view.insert_axis(Axis(0));
-        }
-        while lhs_view.ndim() < lhs_target.len() {
-            lhs_view = lhs_view.insert_axis(Axis(0));
-        }
-
-        let mut rhs_view = rhs.data.view();
-        if rdim == 1 {
-            rhs_view = rhs_view.insert_axis(Axis(1));
-        }
-        while rhs_view.ndim() < rhs_target.len() {
-            rhs_view = rhs_view.insert_axis(Axis(0));
-        }
-
-        let lhs = lhs_view
-            .broadcast(lhs_target.clone())
-            .expect("invalid broadcast for lhs")
-            .to_owned();
-        let rhs = rhs_view
-            .broadcast(rhs_target.clone())
-            .expect("invalid broadcast for rhs")
-            .to_owned();
-
-        let num_batches: usize = stack_shape.iter().product();
-        let lhs = lhs
-            .to_shape((num_batches, l, m))
-            .expect("invalid shape")
-            .to_owned();
-        let rhs = rhs
-            .to_shape((num_batches, m, n))
-            .expect("invalid shape")
-            .to_owned();
-
-        let mut out = Vec::with_capacity(num_batches * l * n);
-        for b in 0..num_batches {
-            let lhs_b = lhs.index_axis(Axis(0), b);
-            let rhs_b = rhs.index_axis(Axis(0), b);
-            for i in 0..l {
-                for j in 0..n {
-                    let mut acc = 0.0;
-                    for k in 0..m {
-                        acc += lhs_b[(i, k)] * rhs_b[(k, j)];
-                    }
-                    out.push(acc);
-                }
-            }
-        }
-
-        if l_squeeze_flag && r_squeeze_flag {
-            new_shape.pop();
-            new_shape.pop();
-        } else if l_squeeze_flag {
-            new_shape.remove(new_shape.len() - 2);
-        } else if r_squeeze_flag {
-            new_shape.pop();
-        }
-
-        Array::new(out, new_shape)
+        matmul_general(self, rhs)
     }
 
     pub fn relu_max(&self, rhs: f32) -> Array {
@@ -254,6 +173,124 @@ impl Array {
             .insert_axis(Axis(axis));
         Array { data }
     }
+}
+
+fn matmul_general(lhs: &Array, rhs: &Array) -> Array {
+    let ldim = lhs.data.ndim();
+    let rdim = rhs.data.ndim();
+
+    let (l_squeeze_flag, r_squeeze_flag): (bool, bool);
+    let (l, m, m_, n): (usize, usize, usize, usize);
+    let (lstackshape, rstackshape): (Vec<usize>, Vec<usize>);
+
+    if ldim == 1 {
+        l_squeeze_flag = true;
+        l = 1;
+        m = lhs.data.shape()[0];
+        lstackshape = Vec::new();
+    } else {
+        l_squeeze_flag = false;
+        l = lhs.data.shape()[ldim - 2];
+        m = lhs.data.shape()[ldim - 1];
+        lstackshape = lhs.data.shape()[..ldim - 2].to_vec();
+    };
+
+    if rdim == 1 {
+        r_squeeze_flag = true;
+        m_ = rhs.data.shape()[0];
+        n = 1;
+        rstackshape = Vec::new();
+    } else {
+        r_squeeze_flag = false;
+        m_ = rhs.data.shape()[rdim - 2];
+        n = rhs.data.shape()[rdim - 1];
+        rstackshape = rhs.data.shape()[..rdim - 2].to_vec();
+    };
+
+    if m != m_ {
+        panic!("invalid shape")
+    }
+
+    let stack_shape = shape_after_broadcast(&lstackshape, &rstackshape).unwrap();
+    let mut new_shape = stack_shape.clone();
+    new_shape.extend([l, n]);
+
+    let lhs_target = stack_shape
+        .iter()
+        .cloned()
+        .chain([l, m])
+        .collect::<Vec<_>>();
+    let rhs_target = stack_shape
+        .iter()
+        .cloned()
+        .chain([m, n])
+        .collect::<Vec<_>>();
+
+    let mut lhs_view = lhs.data.view();
+    if ldim == 1 {
+        lhs_view = lhs_view.insert_axis(Axis(0));
+    }
+    while lhs_view.ndim() < lhs_target.len() {
+        lhs_view = lhs_view.insert_axis(Axis(0));
+    }
+
+    let mut rhs_view = rhs.data.view();
+    if rdim == 1 {
+        rhs_view = rhs_view.insert_axis(Axis(1));
+    }
+    while rhs_view.ndim() < rhs_target.len() {
+        rhs_view = rhs_view.insert_axis(Axis(0));
+    }
+
+    let lhs = lhs_view
+        .broadcast(lhs_target.clone())
+        .expect("invalid broadcast for lhs")
+        .to_owned();
+    let rhs = rhs_view
+        .broadcast(rhs_target.clone())
+        .expect("invalid broadcast for rhs")
+        .to_owned();
+
+    let num_batches: usize = stack_shape.iter().product();
+    let lhs = lhs
+        .to_shape((num_batches, l, m))
+        .expect("invalid shape")
+        .to_owned();
+    let rhs = rhs
+        .to_shape((num_batches, m, n))
+        .expect("invalid shape")
+        .to_owned();
+
+    let mut out = Vec::with_capacity(num_batches * l * n);
+    for b in 0..num_batches {
+        let lhs_b = lhs.index_axis(Axis(0), b);
+        let rhs_b = rhs.index_axis(Axis(0), b);
+        let out_b = lhs_b.dot(&rhs_b);
+        out.extend(out_b.iter().cloned());
+    }
+
+    if l_squeeze_flag && r_squeeze_flag {
+        new_shape.pop();
+        new_shape.pop();
+    } else if l_squeeze_flag {
+        new_shape.remove(new_shape.len() - 2);
+    } else if r_squeeze_flag {
+        new_shape.pop();
+    }
+
+    Array::new(out, new_shape)
+}
+
+fn as_ix1(data: &ArrayD<f32>) -> ArrayView1<'_, f32> {
+    data.view()
+        .into_dimensionality::<Ix1>()
+        .expect("invalid shape")
+}
+
+fn as_ix2(data: &ArrayD<f32>) -> ArrayView2<'_, f32> {
+    data.view()
+        .into_dimensionality::<Ix2>()
+        .expect("invalid shape")
 }
 
 macro_rules! impl_op {
