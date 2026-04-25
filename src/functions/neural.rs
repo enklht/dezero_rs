@@ -45,7 +45,7 @@ impl Function for Linear {
     }
 }
 
-define!(Sigmoid,);
+define!(Sigmoid);
 
 impl Function for Sigmoid {
     impl_getters_setters!();
@@ -58,7 +58,7 @@ impl Function for Sigmoid {
     }
 }
 
-define!(ReLU,);
+define!(ReLU);
 
 impl Function for ReLU {
     impl_getters_setters!();
@@ -71,7 +71,7 @@ impl Function for ReLU {
     }
 }
 
-define!(MeanSquaredError,);
+define!(MeanSquaredError);
 
 impl Function for MeanSquaredError {
     impl_getters_setters!();
@@ -113,7 +113,7 @@ impl Function for Softmax {
     }
 }
 
-define!(CrossEntropy,);
+define!(CrossEntropy);
 
 impl Function for CrossEntropy {
     impl_getters_setters!();
@@ -135,11 +135,11 @@ impl Function for CrossEntropy {
     }
 }
 
-define!(SoftmaxCrossEntropy,);
+define!(SoftmaxCrossEntropy);
 
 fn logsumexp(x: &Array, axis: usize) -> Array {
     let max_x = x.max(1);
-    (&(x - &max_x).exp().sum_with_axis(axis)).ln() + &max_x
+    (x - &max_x).exp().sum_with_axis(axis).ln() + &max_x
 }
 
 impl Function for SoftmaxCrossEntropy {

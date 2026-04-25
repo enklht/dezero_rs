@@ -3,7 +3,7 @@ use crate::functions::macros::*;
 use crate::functions::trait_::Function;
 use crate::variable::{VBox, WeakVBox};
 
-define!(Neg,);
+define!(Neg);
 
 impl Function for Neg {
     impl_getters_setters!();
@@ -41,7 +41,7 @@ impl Function for Powf {
     }
 }
 
-define!(Exp,);
+define!(Exp);
 
 impl Function for Exp {
     impl_getters_setters!();
@@ -66,7 +66,7 @@ impl Function for Reshape {
     }
 }
 
-define!(Transpose,);
+define!(Transpose);
 
 impl Function for Transpose {
     impl_getters_setters!();

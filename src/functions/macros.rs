@@ -27,6 +27,29 @@ macro_rules! impl_getters_setters {
 }
 
 macro_rules! define {
+    ($name: ident) => {
+        pub struct $name {
+            inputs: Option<Vec<VBox>>,
+            output: Option<WeakVBox>,
+            generation: u32,
+        }
+
+        impl Default for $name {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+
+        impl $name {
+            pub fn new() -> Self {
+                Self {
+                    inputs: None,
+                    output: None,
+                    generation: 0,
+                }
+            }
+        }
+    };
     ($name: ident, $($key: ident: $type: ty),*) => {
         pub struct $name {
             inputs: Option<Vec<VBox>>,

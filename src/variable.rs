@@ -166,7 +166,7 @@ impl VBox {
             let gy = f.get_output().get_grad();
             let gxs = f.backward(gy);
 
-            for (x, gx) in x.iter().zip(gxs.into_iter()) {
+            for (x, gx) in x.iter().zip(gxs) {
                 if let Some(gx_old) = x.get_option_grad() {
                     x.set_grad(gx_old + &gx)
                 } else {

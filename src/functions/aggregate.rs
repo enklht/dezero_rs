@@ -39,7 +39,7 @@ impl Function for BroadcastTo {
     }
 }
 
-define!(Matmul,);
+define!(Matmul);
 
 impl Function for Matmul {
     impl_getters_setters!();
