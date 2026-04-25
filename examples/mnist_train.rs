@@ -9,9 +9,9 @@ use dezero::{
 fn main() {
     let (vec_x, vec_t) = load_mnist("data/mnist_test.csv");
 
-    let model = Model::new(MLP::new(&[100, 10], Box::new(F::sigmoid)));
+    let model = Model::new(MLP::new(&[100, 10], Box::new(F::relu)));
 
-    let mut optimizer = Momentum::new(0.01, 0.9, model.clone());
+    let mut optimizer = Momentum::new(0.1, 0.9, model.clone());
 
     let epochs = 5;
 
@@ -59,7 +59,7 @@ fn load_mnist(path: &str) -> (Vec<Array>, Vec<Array>) {
             data.append(&mut line[1..].to_vec());
             target.push(line[0]);
         }
-        let x = Array::new(data, vec![num_rows, num_cols]);
+        let x = Array::new(data, vec![num_rows, num_cols]) / 255.;
         let t = Array::new(target, vec![num_rows]);
         vec_data.push(x);
         vec_target.push(t);
