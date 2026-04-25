@@ -57,13 +57,13 @@ impl Function for Matmul {
         let gx0 = gy.matmul(&x[1].clone().transpose());
         let gx1 = x[0].clone().transpose().matmul(&gy);
 
-        let gx0 = if gx0.get_shape() != x[0].get_shape() {
-            gx0.sum_to(x[0].get_shape())
+        let gx0 = if gx0.shape() != x[0].shape() {
+            gx0.sum_to(x[0].shape())
         } else {
             gx0
         };
-        let gx1 = if gx1.get_shape() != x[1].get_shape() {
-            gx1.sum_to(x[1].get_shape())
+        let gx1 = if gx1.shape() != x[1].shape() {
+            gx1.sum_to(x[1].shape())
         } else {
             gx1
         };

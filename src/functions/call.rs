@@ -47,3 +47,10 @@ pub fn cross_entropy_loss(x: &VBox, t: &VBox) -> VBox {
     let func = CrossEntropy::new();
     call(func, &[x.clone(), t.clone()])
 }
+
+pub fn softmax_cross_entropy_loss(x: &VBox, t: &VBox) -> VBox {
+    use crate::functions::SoftmaxCrossEntropy;
+
+    let func = SoftmaxCrossEntropy::new();
+    call(func, &[x.clone(), t.clone()])
+}

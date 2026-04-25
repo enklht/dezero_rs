@@ -26,19 +26,19 @@ impl Function for Linear {
         let gx = gy.matmul(&x[1].clone().transpose());
         let gw = x[0].clone().transpose().matmul(&gy);
 
-        let gx = if gx.get_shape() != x[0].get_shape() {
-            gx.sum_to(x[0].get_shape())
+        let gx = if gx.shape() != x[0].shape() {
+            gx.sum_to(x[0].shape())
         } else {
             gx
         };
-        let gw = if gw.get_shape() != x[1].get_shape() {
-            gw.sum_to(x[1].get_shape())
+        let gw = if gw.shape() != x[1].shape() {
+            gw.sum_to(x[1].shape())
         } else {
             gw
         };
 
         if self.bias {
-            vec![gx, gw, gy.sum_to(x[2].get_shape())]
+            vec![gx, gw, gy.sum_to(x[2].shape())]
         } else {
             vec![gx, gw]
         }
@@ -95,11 +95,15 @@ impl Function for MeanSquaredError {
 
 define!(Softmax, axis: usize);
 
+fn softmax(x: &Array, axis: usize) -> Array {
+    let y = (x - x.max(axis)).exp();
+    &y / y.sum_with_axis(axis)
+}
+
 impl Function for Softmax {
     impl_getters_setters!();
     fn forward(&self, x: Vec<Array>) -> Array {
-        let y = (&x[0] - x[0].max(self.axis)).exp();
-        &y / y.sum_with_axis(self.axis)
+        softmax(&x[0], self.axis)
     }
     fn backward(&self, gy: Array) -> Vec<Array> {
         let y = self.output.as_ref().unwrap().get_array();
@@ -128,5 +132,53 @@ impl Function for CrossEntropy {
         let gx = -&x[1] / cliped_x;
         let gt = -cliped_x.ln();
         vec![gx * &gy, gt * &gy]
+    }
+}
+
+define!(SoftmaxCrossEntropy,);
+
+fn logsumexp(x: &Array, axis: usize) -> Array {
+    let max_x = x.max(1);
+    (&(x - &max_x).exp().sum_with_axis(axis)).ln() + &max_x
+}
+
+impl Function for SoftmaxCrossEntropy {
+    impl_getters_setters!();
+    fn forward(&self, x: Vec<Array>) -> Array {
+        let (x, t) = (&x[0], &x[1]);
+        let shape = x.shape();
+        let n = shape[0];
+
+        let log_z = logsumexp(x, 1);
+        let log_p = x - &log_z;
+        let log_p_data = log_p.get_data();
+
+        let mut loss = 0.0;
+        for (row, &label) in t.get_data().iter().enumerate() {
+            loss -= log_p_data[[row, label as usize]];
+        }
+        loss /= n as f32;
+
+        Array::new(vec![loss], vec![])
+    }
+    fn backward(&self, gy: Array) -> Vec<Array> {
+        let x: Vec<Array> = self
+            .inputs
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|x| x.get_array())
+            .collect();
+
+        let (x, t) = (&x[0], &x[1]);
+        let n = x.shape()[0];
+
+        let mut y = softmax(x, 1).get_data();
+        for (row, &label) in t.get_data().iter().enumerate() {
+            y[[row, label as usize]] -= 1.0;
+        }
+        y = y * gy.get_data() / n as f32;
+
+        vec![Array::from_ndarray(y)]
     }
 }

@@ -254,6 +254,28 @@ fn backward() {
 }
 
 #[test]
+fn softmax_cross_entropy_backward() {
+    let x = var!(array2!([[0.2, 1.2, -0.5], [0.0, -0.1, 0.3]]));
+    let t = var!(array1!([1, 2]));
+
+    let loss = F::softmax_cross_entropy_loss(x, t);
+    loss.backward();
+
+    let logits = x.get_array();
+    let shifted = &logits - logits.max(1);
+    let exp_x = shifted.exp();
+    let probs = &exp_x / exp_x.sum_with_axis(1);
+
+    let mut expected = probs.get_data();
+    expected[[0, 1]] -= 1.0;
+    expected[[1, 2]] -= 1.0;
+    expected /= 2.0;
+    let expected = dezero::array::Array::from_ndarray(expected);
+
+    assert!(x.get_grad().all_close(&expected, 1e-6));
+}
+
+#[test]
 fn all_close_handles_negative_diff() {
     let x = array1!([1.0, 2.0]);
     let y = array1!([1.05, 2.05]);
@@ -271,8 +293,8 @@ fn broadcasted_matmul_backward_shapes() {
     let loss = y.sum();
     loss.backward();
 
-    assert_eq!(x.get_grad().get_shape(), &[2, 1, 2, 2]);
-    assert_eq!(w.get_grad().get_shape(), &[1, 3, 2, 2]);
+    assert_eq!(x.get_grad().shape(), &[2, 1, 2, 2]);
+    assert_eq!(w.get_grad().shape(), &[1, 3, 2, 2]);
 }
 
 #[test]
@@ -285,7 +307,7 @@ fn broadcasted_linear_backward_shapes() {
     let loss = y.sum();
     loss.backward();
 
-    assert_eq!(x.get_grad().get_shape(), &[2, 1, 3]);
-    assert_eq!(w.get_grad().get_shape(), &[1, 3, 4]);
-    assert_eq!(b.get_grad().get_shape(), &[4]);
+    assert_eq!(x.get_grad().shape(), &[2, 1, 3]);
+    assert_eq!(w.get_grad().shape(), &[1, 3, 4]);
+    assert_eq!(b.get_grad().shape(), &[4]);
 }

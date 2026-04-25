@@ -10,9 +10,14 @@ pub mod unary;
 
 pub use self::aggregate::*;
 pub use self::binary::*;
-pub use self::call::{cross_entropy_loss, linear, mean_squared_error, relu, sigmoid, softmax};
+pub use self::call::{
+    cross_entropy_loss, linear, mean_squared_error, relu, sigmoid, softmax,
+    softmax_cross_entropy_loss,
+};
 pub use self::call_impl::call;
 pub use self::funcbox::FuncBox;
-pub use self::neural::{CrossEntropy, Linear, MeanSquaredError, ReLU, Sigmoid, Softmax};
+pub use self::neural::{
+    CrossEntropy, Linear, MeanSquaredError, ReLU, Sigmoid, Softmax, SoftmaxCrossEntropy,
+};
 pub use self::trait_::Function;
 pub use self::unary::*;

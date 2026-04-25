@@ -97,7 +97,7 @@ impl VBox {
 
     pub fn get_shape(&self) -> Vec<usize> {
         let v = self.0.as_ref();
-        v.borrow().array.get_shape().to_vec()
+        v.borrow().array.shape().to_vec()
     }
 
     pub fn get_grad(&self) -> Array {

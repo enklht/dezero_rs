@@ -9,26 +9,24 @@ use dezero::{
 fn main() {
     let (vec_x, vec_t) = load_mnist("data/mnist_test.csv");
 
-    let model = Model::new(MLP::new(&[100, 10], Box::new(F::relu)));
+    let model = Model::new(MLP::new(&[100, 10], Box::new(F::sigmoid)));
 
-    let mut optimizer = Momentum::new(0.1, 0.9, model.clone());
+    let mut optimizer = Momentum::new(0.01, 0.9, model.clone());
 
-    let epochs = 10;
+    let epochs = 5;
 
     for i in 0..epochs {
         let mut loss_tot = 0.;
         for (x, t) in vec_x.iter().zip(vec_t.iter()) {
-            let x = VBox::new(x.clone());
-            let t = VBox::new(t.clone());
-            let y = F::softmax(&model.call(&x), 1);
-            let loss = F::cross_entropy_loss(&y, &t);
-
-            loss_tot += loss.get_array().get_data()[0];
+            let x = &VBox::new(x.clone());
+            let t = &VBox::new(t.clone());
+            let loss = F::softmax_cross_entropy_loss(&model.call(x), t);
 
             model.clear_grads();
             loss.backward();
-
             optimizer.update();
+
+            loss_tot += loss.get_array().get_data()[[]] * t.get_array().len() as f32;
         }
         println!("epoch {i}");
         println!("loss: {loss_tot}");
@@ -58,13 +56,11 @@ fn load_mnist(path: &str) -> (Vec<Array>, Vec<Array>) {
                 .split(',')
                 .map(|d| d.parse::<f32>().unwrap())
                 .collect::<Vec<_>>();
-            let mut target_row = vec![0.; 10];
-            target_row[line[0] as usize] = 1.;
             data.append(&mut line[1..].to_vec());
-            target.append(&mut target_row);
+            target.push(line[0]);
         }
         let x = Array::new(data, vec![num_rows, num_cols]);
-        let t = Array::new(target, vec![num_rows, 10]);
+        let t = Array::new(target, vec![num_rows]);
         vec_data.push(x);
         vec_target.push(t);
     }

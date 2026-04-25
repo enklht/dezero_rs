@@ -22,6 +22,10 @@ impl Array {
         Array { data }
     }
 
+    pub fn from_ndarray(data: ArrayD<f32>) -> Array {
+        Array { data }
+    }
+
     pub fn read_csv(path: &str) -> Array {
         let f = std::fs::read_to_string(path).expect("File not found");
         let lines = f.lines().collect::<Vec<_>>();
@@ -83,11 +87,15 @@ impl Array {
         Array::new(data, shape.to_vec())
     }
 
-    pub fn get_data(&self) -> &[f32] {
-        self.data.as_slice().expect("Array not contiguous")
+    pub fn get_data(&self) -> ArrayD<f32> {
+        self.data.clone()
     }
 
-    pub fn get_shape(&self) -> &[usize] {
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn shape(&self) -> &[usize] {
         self.data.shape()
     }
 
