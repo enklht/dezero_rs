@@ -3,8 +3,8 @@ mod ops;
 mod utils;
 
 use ndarray::ArrayD;
-use rand::{distributions::Standard, Rng};
-use rand_distr::{Distribution, Normal};
+use rand::prelude::*;
+use rand_distr::{Normal, StandardUniform};
 use std::fmt::Display;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -74,16 +74,16 @@ impl Array {
 
     pub fn rand(shape: &[usize]) -> Array {
         let size: usize = shape.iter().product();
-        let rng = rand::thread_rng();
-        let data = rng.sample_iter(Standard).take(size).collect();
+        let rng = rand::rng();
+        let data = rng.sample_iter(StandardUniform).take(size).collect();
         Array::new(data, shape.to_vec())
     }
 
     pub fn randn(shape: &[usize], mean: f32, std_dev: f32) -> Array {
         let size: usize = shape.iter().product();
-        let rng = rand::thread_rng();
+        let rng = rand::rng();
         let normal = Normal::new(mean, std_dev).unwrap();
-        let data = normal.sample_iter(rng).take(size).collect();
+        let data = rng.sample_iter(normal).take(size).collect();
         Array::new(data, shape.to_vec())
     }
 
