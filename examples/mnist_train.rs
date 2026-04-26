@@ -2,7 +2,7 @@ use dezero::{
     array::Array,
     functions as F,
     layers::{Model, MLP},
-    optimizers::{Momentum, Optimizer},
+    optimizers::{Adam, Optimizer},
     variable::VBox,
 };
 
@@ -11,7 +11,8 @@ fn main() {
 
     let model = Model::new(MLP::new(&[100, 10], Box::new(F::relu)));
 
-    let mut optimizer = Momentum::new(0.1, 0.9, model.clone());
+    let mut optimizer = Adam::new(0.001, 0.9, 0.999, model.clone());
+    // let mut optimizer = Momentum::new(0.01, 0.9, model.clone());
 
     let epochs = 5;
 

@@ -20,7 +20,10 @@ impl Array {
         Array { data }
     }
 
-    define_map_functions!(exp, ln, sin, cos, tan, sinh, cosh, tanh);
+    define_map_functions!(
+        floor, ceil, round, trunc, fract, abs, signum, recip, sqrt, exp, exp2, exp_m1, ln, log2,
+        log10, ln_1p, cbrt, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, asinh, acosh, atanh
+    );
 
     pub fn powi(&self, n: i32) -> Array {
         Array {
@@ -72,7 +75,7 @@ impl Array {
     }
 
     pub fn sum_with_axis(&self, axis: usize) -> Array {
-        let data = self.data.sum_axis(Axis(axis));
+        let data = self.data.sum_axis(Axis(axis)).insert_axis(Axis(axis));
         Array { data }
     }
 
@@ -155,9 +158,10 @@ impl Array {
         Array { data }
     }
 
-    pub fn clip(&self, lowerbound: f32, upperbound: f32) -> Array {
-        let data = self.data.mapv(|x| x.min(upperbound).max(lowerbound));
-        Array { data }
+    pub fn clip(&self, min: f32, max: f32) -> Array {
+        Array {
+            data: self.data.clamp(min, max),
+        }
     }
 
     pub fn max(&self, axis: usize) -> Array {
